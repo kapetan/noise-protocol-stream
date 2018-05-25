@@ -1,0 +1,12 @@
+[
+  "_malloc",
+  "_calloc",
+  "_free",
+
+  "_noise_stream_new",
+  "_noise_stream_initialize",
+  "_noise_stream_free",
+  "_noise_stream_handhshake_read",
+  "_noise_stream_encrypt",
+  "_noise_stream_decrypt"
+]
