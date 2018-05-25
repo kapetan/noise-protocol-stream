@@ -223,18 +223,3 @@ module.exports = function (options) {
   else lib.once('ready', onready)
   return { decrypt, encrypt }
 }
-
-// var { decrypt: localDecrypt, encrypt: localEncrypt } = module.exports({ initiator: true })
-// var { decrypt: remoteDecrypt, encrypt: remoteEncrypt } = module.exports()
-
-// localEncrypt.pipe(remoteDecrypt).on('data', data => console.log('remote ->', data.toString())).on('end', () => console.log('remote end'))
-// remoteEncrypt.pipe(localDecrypt).on('data', data => console.log('local ->', data.toString()))
-
-// localEncrypt.write('hello from local')
-// remoteEncrypt.write('hello from remote')
-
-// setTimeout(function () {
-//   localEncrypt.write('hello 2')
-//   localEncrypt.end()
-//   remoteEncrypt.end()
-// }, 500)

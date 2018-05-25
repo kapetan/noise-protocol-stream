@@ -1,3 +1,5 @@
+/* global mergeInto, LibraryManager, HEAPU8, Module */
+
 mergeInto(LibraryManager.library, {
   noise_stream_handshake_on_write: function (state, ptr, size) {
     var buf = Buffer.from(HEAPU8.buffer, ptr, size)
@@ -14,4 +16,4 @@ mergeInto(LibraryManager.library, {
     if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf)
     buf.copy(HEAPU8, ptr, 0, size)
   }
-});
+})

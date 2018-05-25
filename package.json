@@ -1,9 +1,11 @@
 {
   "name": "noisy",
   "version": "0.0.0",
-  "description": "Noise Protocol C implementation compiled to WebAssembly",
+  "description": "Node stream wrapper for Noise Protocol C implementation compiled to WebAssembly",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "test": "standard --verbose && tape test/index.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kapetan/noisy.git"
@@ -26,5 +28,15 @@
     "end-of-stream": "^1.4.1",
     "length-prefixed-stream": "^1.5.2",
     "stream-each": "^1.2.2"
+  },
+  "devDependencies": {
+    "standard": "^11.0.1",
+    "tape": "^4.9.0"
+  },
+  "standard": {
+    "ignore": [
+      "build/",
+      "src/shell.js"
+    ]
   }
 }

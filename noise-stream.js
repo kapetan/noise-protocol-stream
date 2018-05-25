@@ -4,9 +4,8 @@ var events = require('events')
 var noise = require('./build/noise')
 var functions = require('./src/functions')
 
-module.exports = exports = function (cb) {
+module.exports = function (cb) {
   var that = new events.EventEmitter()
-  that.ready = false
   var instance = noise({
     random_bytes: crypto.randomBytes,
     noise_stream_handshake_on_write: function (state, buf) {
@@ -25,6 +24,7 @@ module.exports = exports = function (cb) {
   })
 
   that.heap = instance.HEAPU8
+  that.ready = false
 
   instance
     .then(function () {
