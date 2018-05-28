@@ -1,5 +1,5 @@
 {
-  "name": "noise-stream",
+  "name": "noise-protocol-stream",
   "version": "0.0.2",
   "description": "Node stream wrapper for Noise Protocol C implementation compiled to WebAssembly",
   "main": "index.js",
@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kapetan/noise-stream.git"
+    "url": "git+https://github.com/kapetan/noise-protocol-stream.git"
   },
   "keywords": [
     "noise",
@@ -22,9 +22,9 @@
   ],
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/kapetan/noise-stream/issues"
+    "url": "https://github.com/kapetan/noise-protocol-stream/issues"
   },
-  "homepage": "https://github.com/kapetan/noise-stream#readme",
+  "homepage": "https://github.com/kapetan/noise-protocol-stream#readme",
   "dependencies": {
     "duplexify": "^3.6.0",
     "end-of-stream": "^1.4.1",
