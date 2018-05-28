@@ -4,6 +4,20 @@ var noise = require('../')
 var TEST_PRIVATE_KEY = Buffer.from('90000e3a66c18b14888be31ab38573551466193e4805540e65f3916356185866', 'hex')
 var TEST_PUBLIC_KEY = Buffer.from('36d359107204cd30cd83291ed295959866c48a6e3e5af9fe720b00af9b624c78', 'hex')
 
+var verifyPromise = function (accept) {
+  var fn = null
+  var promise = new Promise(function (resolve) {
+    fn = resolve
+  })
+
+  promise.verify = function (lprk, lpuk, rpuk, cb) {
+    fn([lprk, lpuk, rpuk])
+    cb(null, accept)
+  }
+
+  return promise
+}
+
 var createClient = function (options) {
   if (!options) options = {}
 
@@ -20,27 +34,17 @@ var createServer = function (options) {
 }
 
 test('simple protocol', function (t) {
-  var { clientDecrypt, clientEncrypt } = createClient()
-  var { serverDecrypt, serverEncrypt } = createServer()
+  var onclientkeys = verifyPromise(true)
+  var onserverkeys = verifyPromise(true)
+  var { clientDecrypt, clientEncrypt } = createClient({ verify: onclientkeys.verify })
+  var { serverDecrypt, serverEncrypt } = createServer({ verify: onserverkeys.verify })
 
   clientEncrypt.pipe(serverDecrypt)
   serverEncrypt.pipe(clientDecrypt)
 
-  var onclientkeys = new Promise(function (resolve) {
-    clientEncrypt.once('keys', function (_, lpk, rpk) {
-      resolve([lpk, rpk])
-    })
-  })
-
-  var onserverkeys = new Promise(function (resolve) {
-    serverEncrypt.once('keys', function (_, lpk, rpk) {
-      resolve([lpk, rpk])
-    })
-  })
-
   Promise.all([onclientkeys, onserverkeys]).then(function (values) {
-    var [clientLocalPublicKey, clientRemotePublicKey] = values[0]
-    var [serverLocalPublicKey, serverRemotePublicKey] = values[1]
+    var [, clientLocalPublicKey, clientRemotePublicKey] = values[0]
+    var [, serverLocalPublicKey, serverRemotePublicKey] = values[1]
 
     t.deepEquals(clientLocalPublicKey, serverRemotePublicKey, 'should be equal client keys')
     t.deepEquals(serverLocalPublicKey, clientRemotePublicKey, 'should be equal server keys')
@@ -103,27 +107,17 @@ test('protocol with different prologue', function (t) {
 })
 
 test('protocol with private key', function (t) {
-  var { clientDecrypt, clientEncrypt } = createClient({ privateKey: TEST_PRIVATE_KEY })
-  var { serverDecrypt, serverEncrypt } = createServer()
+  var onclientkeys = verifyPromise(true)
+  var onserverkeys = verifyPromise(true)
+  var { clientDecrypt, clientEncrypt } = createClient({ verify: onclientkeys.verify, privateKey: TEST_PRIVATE_KEY })
+  var { serverDecrypt, serverEncrypt } = createServer({ verify: onserverkeys.verify })
 
   clientEncrypt.pipe(serverDecrypt)
   serverEncrypt.pipe(clientDecrypt)
 
-  var onclientkeys = new Promise(function (resolve) {
-    clientEncrypt.once('keys', function (lprk, lpuk, rpuk) {
-      resolve([lprk, lpuk, rpuk])
-    })
-  })
-
-  var onserverkeys = new Promise(function (resolve) {
-    serverEncrypt.once('keys', function (_, lpk, rpk) {
-      resolve([lpk, rpk])
-    })
-  })
-
   Promise.all([onclientkeys, onserverkeys]).then(function (values) {
     var [clientLocalPrivateKey, clientLocalPublicKey, clientRemotePublicKey] = values[0]
-    var [serverLocalPublicKey, serverRemotePublicKey] = values[1]
+    var [, serverLocalPublicKey, serverRemotePublicKey] = values[1]
 
     t.deepEquals(TEST_PRIVATE_KEY, clientLocalPrivateKey)
     t.deepEquals(TEST_PUBLIC_KEY, clientLocalPublicKey)
@@ -141,4 +135,61 @@ test('protocol with private key', function (t) {
   serverEncrypt.end()
 
   t.plan(5)
+})
+
+test('protocol with verify reject', function (t) {
+  var { clientDecrypt, clientEncrypt } = createClient({
+    verify: function (lprk, lpuk, rpuk, cb) {
+      t.pass('should call verify')
+      cb(null, false)
+    }
+  })
+
+  var { serverDecrypt, serverEncrypt } = createServer()
+
+  clientEncrypt.pipe(serverDecrypt)
+  serverEncrypt.pipe(clientDecrypt)
+
+  serverDecrypt.on('data', function (data) {
+    t.fail('should not receive data')
+  })
+
+  clientEncrypt.write('test-client-message')
+
+  clientEncrypt.end()
+  serverEncrypt.end()
+
+  t.plan(1)
+})
+
+test('protocol with verify error', function (t) {
+  var { clientDecrypt, clientEncrypt } = createClient({
+    verify: function (lprk, lpuk, rpuk, cb) {
+      t.pass('should call verify')
+      cb(new Error('test-error'))
+    }
+  })
+
+  var { serverDecrypt, serverEncrypt } = createServer()
+
+  var onerror = function (err) {
+    t.equals(err.message, 'test-error')
+  }
+
+  clientEncrypt.pipe(serverDecrypt)
+  serverEncrypt.pipe(clientDecrypt)
+
+  serverDecrypt.on('data', function (data) {
+    t.fail('should not receive data')
+  })
+
+  clientEncrypt.on('error', onerror)
+  clientDecrypt.on('error', onerror)
+
+  clientEncrypt.write('test-client-message')
+
+  clientEncrypt.end()
+  serverEncrypt.end()
+
+  t.plan(3)
 })

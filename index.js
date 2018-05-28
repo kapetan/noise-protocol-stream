@@ -212,11 +212,19 @@ module.exports = function (options) {
 
   var onhandshakesplit = function (ptr, macSize, localPrivateKey, localPublicKey, remotePublicKey) {
     if (ptr === streamPtr) {
-      decrypt.emit('keys', localPrivateKey, localPublicKey, remotePublicKey)
-      encrypt.emit('keys', localPrivateKey, localPublicKey, remotePublicKey)
-      decrypt._splitHandshake(ptr)
-      encrypt._splitHandshake(ptr, macSize)
-      split = true
+      var onverify = function (err, accept) {
+        if (!err && accept === true) {
+          decrypt._splitHandshake(ptr)
+          encrypt._splitHandshake(ptr, macSize)
+          split = true
+        } else {
+          decrypt.destroy(err)
+          encrypt.destroy(err)
+        }
+      }
+
+      if (options.verify) options.verify(localPrivateKey, localPublicKey, remotePublicKey, onverify)
+      else onverify(null, true)
     }
   }
 
