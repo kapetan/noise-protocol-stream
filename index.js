@@ -25,7 +25,7 @@ var writemem = function (src, size) {
   if (!Buffer.isBuffer(src)) src = Buffer.from(src)
   if (!size) size = src.length
   var ptr = lib.malloc(size)
-  src.copy(heap, ptr, 0, src.length)
+  heap.set(src, ptr)
   return ptr
 }
 

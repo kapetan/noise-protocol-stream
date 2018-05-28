@@ -19,6 +19,6 @@ mergeInto(LibraryManager.library, {
   noise_rand_bytes: function (ptr, size) {
     var buf = Module['random_bytes'](size)
     if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf)
-    buf.copy(HEAPU8, ptr, 0, size)
+    HEAPU8.set(buf, ptr)
   }
 })

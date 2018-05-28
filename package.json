@@ -6,7 +6,7 @@
   "scripts": {
     "build": "./scripts/build.sh",
     "test": "standard --verbose && tape test/index.js",
-    "test-browser": "airtap --local 8080 test/index.js"
+    "test-browser": "browserify test/index.js | testling -x scripts/chrome.sh"
   },
   "repository": {
     "type": "git",
@@ -32,9 +32,10 @@
     "stream-each": "^1.2.2"
   },
   "devDependencies": {
-    "airtap": "0.0.7",
+    "browserify": "^16.2.2",
     "standard": "^11.0.1",
-    "tape": "^4.9.0"
+    "tape": "^4.9.0",
+    "testling": "^1.7.1"
   },
   "standard": {
     "ignore": [
