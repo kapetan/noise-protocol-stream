@@ -4,7 +4,7 @@ var events = require('events')
 var noise = require('./build/noise')
 var functions = require('./src/functions')
 
-module.exports = function (cb) {
+module.exports = function () {
   var that = new events.EventEmitter()
   var instance = noise({
     random_bytes: crypto.randomBytes,
