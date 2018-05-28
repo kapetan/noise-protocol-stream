@@ -45,6 +45,9 @@ Module['quit'] = function(status, toThrow) {
 };
 Module['preRun'] = [];
 Module['postRun'] = [];
+Module['readMemory'] = function (ptr, size) {
+  return Buffer.from(HEAPU8.slice(ptr, ptr + size))
+};
 
 // The environment setup code below is customized to use Module.
 // *** Environment setup code ***

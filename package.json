@@ -4,6 +4,7 @@
   "description": "Node stream wrapper for Noise Protocol C implementation compiled to WebAssembly",
   "main": "index.js",
   "scripts": {
+    "build": "./scripts/build.sh",
     "test": "standard --verbose && tape test/index.js"
   },
   "repository": {

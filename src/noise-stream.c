@@ -4,17 +4,22 @@
 
 struct NoiseStreamState {
   NoiseHandshakeState *handshake;
-  NoiseCipherState *send_cipher;
-  NoiseCipherState *recv_cipher;
+  NoiseCipherState *encrypt_cipher;
+  NoiseCipherState *decrypt_cipher;
 };
 
-static uint8_t data[4096];
+static uint8_t data[1024];
 
 static int noise_stream_process_action(NoiseStreamState *state) {
   int err;
   NoiseBuffer buf;
-  NoiseCipherState *send_cipher;
-  NoiseCipherState *recv_cipher;
+  NoiseDHState *local_dh;
+  NoiseDHState *remote_dh;
+  NoiseCipherState *encrypt_cipher;
+  NoiseCipherState *decrypt_cipher;
+  size_t local_private_key_size;
+  size_t local_public_key_size;
+  size_t remote_public_key_size;
   int action = noise_handshakestate_get_action(state->handshake);
 
   switch (action) {
@@ -28,36 +33,74 @@ static int noise_stream_process_action(NoiseStreamState *state) {
       noise_stream_handshake_on_read(state);
       return NOISE_ERROR_NONE;
     case NOISE_ACTION_SPLIT:
-      err = noise_handshakestate_split(state->handshake, &send_cipher, &recv_cipher);
+      err = noise_handshakestate_split(state->handshake, &encrypt_cipher, &decrypt_cipher);
       if (err != NOISE_ERROR_NONE) return err;
+
+      local_dh = noise_handshakestate_get_local_keypair_dh(state->handshake);
+      local_private_key_size = noise_dhstate_get_private_key_length(local_dh);
+      local_public_key_size = noise_dhstate_get_public_key_length(local_dh);
+
+      err = noise_dhstate_get_keypair(local_dh,
+        data, local_private_key_size,
+        data + local_private_key_size, local_public_key_size);
+      if (err != NOISE_ERROR_NONE) return err;
+
+      remote_dh = noise_handshakestate_get_remote_public_key_dh(state->handshake);
+      remote_public_key_size = noise_dhstate_get_public_key_length(remote_dh);
+
+      err = noise_dhstate_get_public_key(remote_dh,
+        data + local_private_key_size + local_public_key_size, remote_public_key_size);
+
       noise_handshakestate_free(state->handshake);
       state->handshake = NULL;
-      state->send_cipher = send_cipher;
-      state->recv_cipher = recv_cipher;
-      noise_stream_handshake_on_split(state, noise_cipherstate_get_mac_length(send_cipher));
+      state->encrypt_cipher = encrypt_cipher;
+      state->decrypt_cipher = decrypt_cipher;
+
+      noise_stream_handshake_on_split(state, noise_cipherstate_get_mac_length(encrypt_cipher),
+        data, local_private_key_size,
+        data + local_private_key_size, local_public_key_size,
+        data + local_private_key_size + local_public_key_size, remote_public_key_size);
       return NOISE_ERROR_NONE;
     default:
       return NOISE_ERROR_SYSTEM;
   }
 }
 
-int noise_stream_new(NoiseStreamState **state, int initiator) {
+int noise_stream_new(
+    NoiseStreamState **state,
+    int initiator,
+    uint8_t *prologue, size_t prologue_size,
+    uint8_t *private_key, size_t private_key_size) {
+
   int err;
   NoiseHandshakeState *handshake;
+  NoiseDHState *dh;
 
   *state = (NoiseStreamState *) malloc(sizeof(NoiseStreamState));
   if (!(*state)) return NOISE_ERROR_NO_MEMORY;
 
-  err = noise_handshakestate_new_by_name(&handshake, "Noise_NN_25519_AESGCM_SHA256",
+  err = noise_handshakestate_new_by_name(&handshake, "Noise_XX_25519_AESGCM_SHA256",
     initiator ? NOISE_ROLE_INITIATOR : NOISE_ROLE_RESPONDER);
+  if (err != NOISE_ERROR_NONE) return err;
+
+  if (prologue) {
+    err = noise_handshakestate_set_prologue(handshake, prologue, prologue_size);
+    if (err != NOISE_ERROR_NONE) return err;
+  }
+
+  dh = noise_handshakestate_get_local_keypair_dh(handshake);
+
+  if (private_key) err = noise_dhstate_set_keypair_private(dh, private_key, private_key_size);
+  else err = noise_dhstate_generate_keypair(dh);
+
   if (err != NOISE_ERROR_NONE) return err;
 
   err = noise_handshakestate_start(handshake);
   if (err != NOISE_ERROR_NONE) return err;
 
   (*state)->handshake = handshake;
-  (*state)->send_cipher = NULL;
-  (*state)->recv_cipher = NULL;
+  (*state)->encrypt_cipher = NULL;
+  (*state)->decrypt_cipher = NULL;
 
   return NOISE_ERROR_NONE;
 }
@@ -68,8 +111,8 @@ int noise_stream_initialize(NoiseStreamState *state) {
 
 int noise_stream_free(NoiseStreamState *state) {
   if (state->handshake) noise_handshakestate_free(state->handshake);
-  if (state->send_cipher) noise_cipherstate_free(state->send_cipher);
-  if (state->recv_cipher) noise_cipherstate_free(state->recv_cipher);
+  if (state->encrypt_cipher) noise_cipherstate_free(state->encrypt_cipher);
+  if (state->decrypt_cipher) noise_cipherstate_free(state->decrypt_cipher);
   free(state);
   return NOISE_ERROR_NONE;
 }
@@ -89,7 +132,7 @@ int noise_stream_decrypt(NoiseStreamState *state, uint8_t *data, size_t size, si
   NoiseBuffer buf;
 
   noise_buffer_set_input(buf, data, size);
-  err = noise_cipherstate_decrypt(state->recv_cipher, &buf);
+  err = noise_cipherstate_decrypt(state->decrypt_cipher, &buf);
   if (err != NOISE_ERROR_NONE) return err;
   *out = buf.size;
   return NOISE_ERROR_NONE;
@@ -99,8 +142,8 @@ int noise_stream_encrypt(NoiseStreamState *state, uint8_t *data, size_t size, si
   int err;
   NoiseBuffer buf;
 
-  noise_buffer_set_inout(buf, data, size, size + noise_cipherstate_get_mac_length(state->send_cipher));
-  err = noise_cipherstate_encrypt(state->send_cipher, &buf);
+  noise_buffer_set_inout(buf, data, size, size + noise_cipherstate_get_mac_length(state->encrypt_cipher));
+  err = noise_cipherstate_encrypt(state->encrypt_cipher, &buf);
   if (err != NOISE_ERROR_NONE) return err;
   *out = buf.size;
   return NOISE_ERROR_NONE;

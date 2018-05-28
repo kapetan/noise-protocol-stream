@@ -2,14 +2,19 @@
 
 mergeInto(LibraryManager.library, {
   noise_stream_handshake_on_write: function (state, ptr, size) {
-    var buf = Buffer.from(HEAPU8.buffer, ptr, size)
-    Module['noise_stream_handshake_on_write'](state, buf)
+    Module['noise_stream_handshake_on_write'](state, Module['readMemory'](ptr, size))
   },
   noise_stream_handshake_on_read: function (state) {
     Module['noise_stream_handshake_on_read'](state)
   },
-  noise_stream_handshake_on_split: function (state, macSize) {
-    Module['noise_stream_handshake_on_split'](state, macSize)
+  noise_stream_handshake_on_split: function (state, macSize,
+    localPrivateKeyPtr, localPrivateKeySize,
+    localPublicKeyPtr, localPublicKeySize,
+    remotePublicKeyPtr, remotePublicKeySize) {
+    Module['noise_stream_handshake_on_split'](state, macSize,
+      Module['readMemory'](localPrivateKeyPtr, localPrivateKeySize),
+      Module['readMemory'](localPublicKeyPtr, localPublicKeySize),
+      Module['readMemory'](remotePublicKeyPtr, remotePublicKeySize))
   },
   noise_rand_bytes: function (ptr, size) {
     var buf = Module['random_bytes'](size)

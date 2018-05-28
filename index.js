@@ -41,7 +41,7 @@ var DecryptStream = function (options) {
   var decode = lpStream.decode()
   var pass = new stream.PassThrough()
 
-  decode.on('finish', function () {
+  decode.on('end', function () {
     pass.end()
   })
 
@@ -49,11 +49,14 @@ var DecryptStream = function (options) {
     if (self._streamPtr) {
       var dataPtr = writemem(data)
       var sizePtr = pointer()
-
       var err = lib.noise_stream_decrypt(self._streamPtr, dataPtr, data.length, sizePtr)
-      if (err) return self.destroy(new Error('noise_stream_decrypt ' + err))
-      var size = dereference(sizePtr)
-      pass.write(readmem(dataPtr, size), next)
+
+      if (!err) {
+        var size = dereference(sizePtr)
+        pass.write(readmem(dataPtr, size), next)
+      } else {
+        self.destroy(new Error('noise_stream_decrypt ' + err))
+      }
 
       lib.free(dataPtr)
       lib.free(sizePtr)
@@ -115,7 +118,7 @@ var EncryptStream = function (options) {
   var pass = new stream.PassThrough()
   var encode = lpStream.encode()
 
-  pass.on('finish', function () {
+  pass.on('end', function () {
     encode.end()
   })
 
@@ -137,11 +140,14 @@ EncryptStream.prototype._splitHandshake = function (ptr, macSize) {
   each(this._input, function (data, next) {
     var dataPtr = writemem(data, data.length + macSize)
     var sizePtr = pointer()
-
     var err = lib.noise_stream_encrypt(ptr, dataPtr, data.length, sizePtr)
-    if (err) return self.destroy(new Error('noise_stream_encrypt ' + err))
-    var size = dereference(sizePtr)
-    self._output.write(readmem(dataPtr, size), next)
+
+    if (!err) {
+      var size = dereference(sizePtr)
+      self._output.write(readmem(dataPtr, size), next)
+    } else {
+      self.destroy(new Error('noise_stream_encrypt ' + err))
+    }
 
     lib.free(dataPtr)
     lib.free(sizePtr)
@@ -153,18 +159,37 @@ module.exports = function (options) {
 
   var streamPtr = null
   var ended = false
+  var split = false
   var decrypt = new DecryptStream()
   var encrypt = new EncryptStream()
 
   var onready = function () {
-    var err = null
+    var err = 0
     var streamPtrPtr = pointer()
+    var prologuePtr = options.prologue != null ? writemem(options.prologue) : 0
+    var privateKeyPtr = options.privateKey != null ? writemem(options.privateKey) : 0
 
-    err = lib.noise_stream_new(streamPtrPtr, options.initiator ? 1 : 0)
-    if (err) return destroy('noise_stream_new', err)
+    var free = function () {
+      lib.free(streamPtrPtr)
+      if (prologuePtr) lib.free(prologuePtr)
+      if (privateKeyPtr) lib.free(privateKeyPtr)
+    }
+
+    err = lib.noise_stream_new(
+      streamPtrPtr,
+      options.initiator ? 1 : 0,
+      prologuePtr,
+      prologuePtr ? Buffer.byteLength(options.prologue) : 0,
+      privateKeyPtr,
+      privateKeyPtr ? Buffer.byteLength(options.privateKey) : 0)
+
+    if (err) {
+      free()
+      return destroy('noise_stream_new', err)
+    }
 
     streamPtr = dereference(streamPtrPtr)
-    lib.free(streamPtrPtr)
+    free()
 
     err = lib.noise_stream_initialize(streamPtr)
     if (err) return destroy('noise_stream_initialize', err)
@@ -185,15 +210,18 @@ module.exports = function (options) {
     }
   }
 
-  var onhandshakesplit = function (ptr, macSize) {
+  var onhandshakesplit = function (ptr, macSize, localPrivateKey, localPublicKey, remotePublicKey) {
     if (ptr === streamPtr) {
+      decrypt.emit('keys', localPrivateKey, localPublicKey, remotePublicKey)
+      encrypt.emit('keys', localPrivateKey, localPublicKey, remotePublicKey)
       decrypt._splitHandshake(ptr)
       encrypt._splitHandshake(ptr, macSize)
+      split = true
     }
   }
 
   var cleanup = function () {
-    if (!ended) {
+    if (!ended && split) {
       ended = true
       return
     }
@@ -208,8 +236,8 @@ module.exports = function (options) {
 
   var destroy = function (s, code) {
     var err = new Error(s + ' ' + code)
-    encrypt.destroy(err)
     decrypt.destroy(err)
+    encrypt.destroy(err)
   }
 
   lib.on('noise_stream_handshake_write', onhandshakewrite)

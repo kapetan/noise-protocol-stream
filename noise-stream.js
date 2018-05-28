@@ -14,8 +14,8 @@ module.exports = function (cb) {
     noise_stream_handshake_on_read: function (state) {
       that.emit('noise_stream_handshake_read', state)
     },
-    noise_stream_handshake_on_split: function (state, macSize) {
-      that.emit('noise_stream_handshake_split', state, macSize)
+    noise_stream_handshake_on_split: function (state, macSize, localPrivateKey, localPublicKey, remotePublicKey) {
+      that.emit('noise_stream_handshake_split', state, macSize, localPrivateKey, localPublicKey, remotePublicKey)
     }
   })
 
