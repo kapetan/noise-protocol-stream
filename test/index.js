@@ -1,3 +1,4 @@
+var stream = require('stream')
 var test = require('tape')
 var noise = require('../')
 
@@ -33,16 +34,40 @@ var createServer = function (options) {
   return { serverDecrypt: decrypt, serverEncrypt: encrypt }
 }
 
+var buffer = function (done) {
+  var buffer = []
+
+  return new stream.Transform({
+    transform: function (data, enc, cb) {
+      buffer.push(data)
+      cb(null, data)
+    },
+    flush: function (cb) {
+      done(Buffer.concat(buffer))
+      cb()
+    }
+  })
+}
+
 test('simple protocol', function (t) {
-  t.plan(4)
+  t.plan(6)
 
   var onclientkeys = verifyPromise(true)
   var onserverkeys = verifyPromise(true)
   var { clientDecrypt, clientEncrypt } = createClient({ verify: onclientkeys.verify })
   var { serverDecrypt, serverEncrypt } = createServer({ verify: onserverkeys.verify })
 
-  clientEncrypt.pipe(serverDecrypt)
-  serverEncrypt.pipe(clientDecrypt)
+  clientEncrypt
+    .pipe(buffer(function (buffer) {
+      t.notOk(buffer.includes('test-client-message'), 'should not contain plain text message')
+    }))
+    .pipe(serverDecrypt)
+
+  serverEncrypt
+    .pipe(buffer(function (buffer) {
+      t.notOk(buffer.includes('test-server-message'), 'should not contain plain text message')
+    }))
+    .pipe(clientDecrypt)
 
   Promise.all([onclientkeys, onserverkeys]).then(function (values) {
     var [, clientLocalPublicKey, clientRemotePublicKey] = values[0]
@@ -187,6 +212,31 @@ test('protocol with verify error', function (t) {
 
   clientEncrypt.on('error', onerror)
   clientDecrypt.on('error', onerror)
+
+  clientEncrypt.write('test-client-message')
+
+  clientEncrypt.end()
+  serverEncrypt.end()
+})
+
+test('buffered decrypt', function (t) {
+  t.plan(1)
+
+  var { clientDecrypt, clientEncrypt } = createClient()
+  var { serverDecrypt, serverEncrypt } = createServer({
+    verify: function (lprk, lpuk, rpuk, cb) {
+      setTimeout(function () {
+        cb(null, true)
+      }, 0)
+    }
+  })
+
+  clientEncrypt.pipe(serverDecrypt)
+  serverEncrypt.pipe(clientDecrypt)
+
+  serverDecrypt.on('data', function (data) {
+    t.equals(data.toString(), 'test-client-message')
+  })
 
   clientEncrypt.write('test-client-message')
 

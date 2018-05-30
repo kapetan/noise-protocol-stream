@@ -47,19 +47,7 @@ var DecryptStream = function (options) {
 
   each(decode, function (data, next) {
     if (self._streamPtr) {
-      var dataPtr = writemem(data)
-      var sizePtr = pointer()
-      var err = lib.noise_stream_decrypt(self._streamPtr, dataPtr, data.length, sizePtr)
-
-      if (!err) {
-        var size = dereference(sizePtr)
-        pass.write(readmem(dataPtr, size), next)
-      } else {
-        self.destroy(new Error('noise_stream_decrypt ' + err))
-      }
-
-      lib.free(dataPtr)
-      lib.free(sizePtr)
+      self._writeOutput(data, next)
     } else if (self._handshakeCb) {
       var cb = self._handshakeCb
       self._handshakeCb = null
@@ -96,13 +84,7 @@ DecryptStream.prototype._readHandshake = function (cb) {
 
 DecryptStream.prototype._splitHandshake = function (ptr) {
   this._streamPtr = ptr
-
-  var self = this
-  var ondrain = function (data, next) {
-    self._output.write(data, next)
-  }
-
-  if (this._inputData) this._drainInput(ondrain)
+  if (this._inputData) this._drainInput(this._writeOutput.bind(this))
 }
 
 DecryptStream.prototype._drainInput = function (cb) {
@@ -110,6 +92,22 @@ DecryptStream.prototype._drainInput = function (cb) {
   var next = this._inputCb
   this._inputData = this._inputCb = null
   cb(data, next)
+}
+
+DecryptStream.prototype._writeOutput = function (data, cb) {
+  var dataPtr = writemem(data)
+  var sizePtr = pointer()
+  var err = lib.noise_stream_decrypt(this._streamPtr, dataPtr, data.length, sizePtr)
+
+  if (!err) {
+    var size = dereference(sizePtr)
+    this._output.write(readmem(dataPtr, size), cb)
+  } else {
+    this.destroy(new Error('noise_stream_decrypt ' + err))
+  }
+
+  lib.free(dataPtr)
+  lib.free(sizePtr)
 }
 
 var EncryptStream = function (options) {
