@@ -4,7 +4,13 @@ var events = require('events')
 var noise = require('./build/noise')
 var functions = require('./src/functions')
 
-module.exports = function () {
+var supported = (typeof WebAssembly === 'object')
+
+var noop = function () {
+  throw new Error('operation not supported')
+}
+
+module.exports = exports = supported ? function () {
   var that = new events.EventEmitter()
   var instance = noise({
     random_bytes: crypto.randomBytes,
@@ -35,4 +41,16 @@ module.exports = function () {
     })
 
   return that
+} : function () {
+  var that = new events.EventEmitter()
+
+  functions.forEach(function (name) {
+    that[name.replace(/^_/, '')] = noop
+  })
+
+  that.heap = null
+  that.ready = false
+  return that
 }
+
+exports.supported = supported

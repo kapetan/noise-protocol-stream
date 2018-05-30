@@ -2,6 +2,7 @@
 
 set -e
 
+DEBUG=""
 DIRNAME="$(cd "$(dirname "$BASH_SOURCE")"/..; pwd)"
 NOISE="$DIRNAME"/noise-c
 BUILD="$DIRNAME"/build
@@ -57,26 +58,52 @@ FILES+=("$SRC"/noise-stream.c)
 
 FUNCTIONS=$(node -e 'process.stdout.write(JSON.stringify(require("'"$SRC"'/functions.json")))')
 
+function usage {
+  if [ "$1" != "" ]; then
+    echo "Error: $1"
+  fi
+
+  echo "Usage: build.sh"
+  echo
+  echo "  --debug    Generate debug output"
+
+  exit 1
+}
+
+function compile () {
+  EMMAKEN_CFLAGS="-include $SRC/noise-stream.h" \
+  emcc "${FILES[@]}" \
+    "$@" --js-library "$SRC"/library.js \
+    -I "$NOISE"/include \
+    -I "$NOISE"/src \
+    -I "$NOISE"/src/protocol \
+    -I "$NOISE"/src/crypto/goldilocks/src/include \
+    -I "$NOISE"/src/crypto/goldilocks/src/p448 \
+    -I "$NOISE"/src/crypto/goldilocks/src/p448/arch_32 \
+    -s SHELL_FILE="$SRC"/shell.js \
+    -s ABORTING_MALLOC=0 \
+    -s MODULARIZE=1 \
+    -s EXPORT_NAME="noise" \
+    -s EXPORTED_FUNCTIONS="$FUNCTIONS" \
+    -s NO_EXIT_RUNTIME=1 \
+    -s NO_FILESYSTEM=1 \
+    -s EXPORTED_RUNTIME_METHODS=[] \
+    -s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=[] \
+    -s WASM=1 \
+    -s SINGLE_FILE=1
+}
+
+while [ "$1" != "" ]; do
+  case "$1" in
+    --debug)    DEBUG=true; shift ;;
+    *)          usage "unknown argument $1" ;;
+  esac
+done
+
 mkdir -p "$BUILD"
 
-EMMAKEN_CFLAGS="-include $SRC/noise-stream.h" \
-emcc "${FILES[@]}" \
-  -Os --llvm-lto 1 --closure 1 --js-library "$SRC"/library.js \
-  -I "$NOISE"/include \
-  -I "$NOISE"/src \
-  -I "$NOISE"/src/protocol \
-  -I "$NOISE"/src/crypto/goldilocks/src/include \
-  -I "$NOISE"/src/crypto/goldilocks/src/p448 \
-  -I "$NOISE"/src/crypto/goldilocks/src/p448/arch_32 \
-  -s SHELL_FILE="$SRC"/shell.js \
-  -s ABORTING_MALLOC=0 \
-  -s MODULARIZE=1 \
-  -s EXPORT_NAME="noise" \
-  -s EXPORTED_FUNCTIONS="$FUNCTIONS" \
-  -s NO_EXIT_RUNTIME=1 \
-  -s NO_FILESYSTEM=1 \
-  -s EXPORTED_RUNTIME_METHODS=[] \
-  -s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=[] \
-  -s WASM=1 \
-  -s SINGLE_FILE=1 \
-  -o "$BUILD"/noise.js
+if $DEBUG; then
+  compile -O0 -o "$BUILD"/debug.js
+else
+  compile -Os --llvm-lto 1 --closure 1 -o "$BUILD"/noise.js
+fi

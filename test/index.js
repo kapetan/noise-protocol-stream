@@ -34,6 +34,8 @@ var createServer = function (options) {
 }
 
 test('simple protocol', function (t) {
+  t.plan(4)
+
   var onclientkeys = verifyPromise(true)
   var onserverkeys = verifyPromise(true)
   var { clientDecrypt, clientEncrypt } = createClient({ verify: onclientkeys.verify })
@@ -63,11 +65,11 @@ test('simple protocol', function (t) {
 
   clientEncrypt.end()
   serverEncrypt.end()
-
-  t.plan(4)
 })
 
 test('protocol with prologue', function (t) {
+  t.plan(1)
+
   var { clientDecrypt, clientEncrypt } = createClient({ prologue: 'test-prologue' })
   var { serverDecrypt, serverEncrypt } = createServer({ prologue: 'test-prologue' })
 
@@ -82,11 +84,11 @@ test('protocol with prologue', function (t) {
 
   clientEncrypt.end()
   serverEncrypt.end()
-
-  t.plan(1)
 })
 
 test('protocol with different prologue', function (t) {
+  t.plan(2)
+
   var { clientDecrypt, clientEncrypt } = createClient({ prologue: 'test-prologue-1' })
   var { serverDecrypt, serverEncrypt } = createServer({ prologue: 'test-prologue-2' })
 
@@ -102,11 +104,11 @@ test('protocol with different prologue', function (t) {
 
   clientEncrypt.end()
   serverEncrypt.end()
-
-  t.plan(2)
 })
 
 test('protocol with private key', function (t) {
+  t.plan(5)
+
   var onclientkeys = verifyPromise(true)
   var onserverkeys = verifyPromise(true)
   var { clientDecrypt, clientEncrypt } = createClient({ verify: onclientkeys.verify, privateKey: TEST_PRIVATE_KEY })
@@ -133,11 +135,11 @@ test('protocol with private key', function (t) {
 
   clientEncrypt.end()
   serverEncrypt.end()
-
-  t.plan(5)
 })
 
 test('protocol with verify reject', function (t) {
+  t.plan(1)
+
   var { clientDecrypt, clientEncrypt } = createClient({
     verify: function (lprk, lpuk, rpuk, cb) {
       t.pass('should call verify')
@@ -158,11 +160,11 @@ test('protocol with verify reject', function (t) {
 
   clientEncrypt.end()
   serverEncrypt.end()
-
-  t.plan(1)
 })
 
 test('protocol with verify error', function (t) {
+  t.plan(3)
+
   var { clientDecrypt, clientEncrypt } = createClient({
     verify: function (lprk, lpuk, rpuk, cb) {
       t.pass('should call verify')
@@ -190,6 +192,4 @@ test('protocol with verify error', function (t) {
 
   clientEncrypt.end()
   serverEncrypt.end()
-
-  t.plan(3)
 })

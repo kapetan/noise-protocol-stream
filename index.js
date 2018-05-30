@@ -154,7 +154,7 @@ EncryptStream.prototype._splitHandshake = function (ptr, macSize) {
   })
 }
 
-module.exports = function (options) {
+module.exports = exports = function (options) {
   if (!options) options = {}
 
   var streamPtr = null
@@ -259,3 +259,5 @@ module.exports = function (options) {
   else lib.once('ready', onready)
   return { decrypt, encrypt }
 }
+
+exports.supported = noise.supported

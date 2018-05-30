@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "./scripts/build.sh",
-    "test": "standard --verbose && tape test/index.js",
+    "test": "standard --verbose && tape test/index.js && tape test/unsupported.js",
     "test-browser": "browserify test/index.js | testling -x scripts/chrome.sh"
   },
   "repository": {
