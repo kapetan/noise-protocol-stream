@@ -12,6 +12,10 @@ var PTR_SIZE = 4
 var lib = noise()
 var heap = lib.heap
 
+var createError = function (s, code) {
+  return new Error(s + (code != null ? (' ' + code) : ''))
+}
+
 var pointer = function () {
   return lib.malloc(PTR_SIZE)
 }
@@ -25,7 +29,7 @@ var writemem = function (src, size) {
   if (!Buffer.isBuffer(src)) src = Buffer.from(src)
   if (!size) size = src.length
   var ptr = lib.malloc(size)
-  heap.set(src, ptr)
+  if (ptr) heap.set(src, ptr)
   return ptr
 }
 
@@ -95,19 +99,34 @@ DecryptStream.prototype._drainInput = function (cb) {
 }
 
 DecryptStream.prototype._writeOutput = function (data, cb) {
-  var dataPtr = writemem(data)
-  var sizePtr = pointer()
-  var err = lib.noise_stream_decrypt(this._streamPtr, dataPtr, data.length, sizePtr)
+  var dataPtr
+  var sizePtr
+  var err
 
-  if (!err) {
-    var size = dereference(sizePtr)
-    this._output.write(readmem(dataPtr, size), cb)
+  dataPtr = writemem(data)
+
+  if (dataPtr) {
+    sizePtr = pointer()
+
+    if (sizePtr) {
+      err = lib.noise_stream_decrypt(this._streamPtr, dataPtr, data.length, sizePtr)
+
+      if (!err) {
+        var size = dereference(sizePtr)
+        this._output.write(readmem(dataPtr, size), cb)
+      } else {
+        cb(createError('noise_stream_decrypt', err))
+      }
+
+      lib.free(sizePtr)
+    } else {
+      cb(createError('malloc'))
+    }
+
+    lib.free(dataPtr)
   } else {
-    this.destroy(new Error('noise_stream_decrypt ' + err))
+    cb(createError('malloc'))
   }
-
-  lib.free(dataPtr)
-  lib.free(sizePtr)
 }
 
 var EncryptStream = function (options) {
@@ -136,19 +155,34 @@ EncryptStream.prototype._writeHandshake = function (data) {
 EncryptStream.prototype._splitHandshake = function (ptr, macSize) {
   var self = this
   each(this._input, function (data, next) {
-    var dataPtr = writemem(data, data.length + macSize)
-    var sizePtr = pointer()
-    var err = lib.noise_stream_encrypt(ptr, dataPtr, data.length, sizePtr)
+    var dataPtr
+    var sizePtr
+    var err
 
-    if (!err) {
-      var size = dereference(sizePtr)
-      self._output.write(readmem(dataPtr, size), next)
+    dataPtr = writemem(data, data.length + macSize)
+
+    if (dataPtr) {
+      sizePtr = pointer()
+
+      if (sizePtr) {
+        err = lib.noise_stream_encrypt(ptr, dataPtr, data.length, sizePtr)
+
+        if (!err) {
+          var size = dereference(sizePtr)
+          self._output.write(readmem(dataPtr, size), next)
+        } else {
+          next(createError('noise_stream_encrypt', err))
+        }
+
+        lib.free(sizePtr)
+      } else {
+        next(createError('malloc'))
+      }
+
+      lib.free(dataPtr)
     } else {
-      self.destroy(new Error('noise_stream_encrypt ' + err))
+      next(createError('malloc'))
     }
-
-    lib.free(dataPtr)
-    lib.free(sizePtr)
   })
 }
 
@@ -162,35 +196,48 @@ module.exports = exports = function (options) {
   var encrypt = new EncryptStream()
 
   var onready = function () {
-    var err = 0
-    var streamPtrPtr = pointer()
-    var prologuePtr = options.prologue != null ? writemem(options.prologue) : 0
-    var privateKeyPtr = options.privateKey != null ? writemem(options.privateKey) : 0
+    var err
+    var streamPtrPtr
+    var prologuePtr
+    var privateKeyPtr
 
-    var free = function () {
+    streamPtrPtr = pointer()
+
+    if (streamPtrPtr) {
+      if (options.prologue != null) prologuePtr = writemem(options.prologue)
+      if (options.prologue == null || prologuePtr) {
+        if (options.privateKey != null) privateKeyPtr = writemem(options.privateKey)
+        if (options.privateKey == null || privateKeyPtr) {
+          err = lib.noise_stream_new(
+            streamPtrPtr,
+            options.initiator ? 1 : 0,
+            prologuePtr,
+            prologuePtr ? Buffer.byteLength(options.prologue) : 0,
+            privateKeyPtr,
+            privateKeyPtr ? Buffer.byteLength(options.privateKey) : 0)
+
+          if (!err) {
+            streamPtr = dereference(streamPtrPtr)
+            err = lib.noise_stream_initialize(streamPtr)
+            if (err) destroy('noise_stream_initialize', err)
+          } else {
+            destroy('noise_stream_new', err)
+          }
+
+          if (privateKeyPtr) lib.free(privateKeyPtr)
+        } else {
+          destroy('malloc')
+        }
+
+        if (prologuePtr) lib.free(prologuePtr)
+      } else {
+        destroy('malloc')
+      }
+
       lib.free(streamPtrPtr)
-      if (prologuePtr) lib.free(prologuePtr)
-      if (privateKeyPtr) lib.free(privateKeyPtr)
+    } else {
+      destroy('malloc')
     }
-
-    err = lib.noise_stream_new(
-      streamPtrPtr,
-      options.initiator ? 1 : 0,
-      prologuePtr,
-      prologuePtr ? Buffer.byteLength(options.prologue) : 0,
-      privateKeyPtr,
-      privateKeyPtr ? Buffer.byteLength(options.privateKey) : 0)
-
-    if (err) {
-      free()
-      return destroy('noise_stream_new', err)
-    }
-
-    streamPtr = dereference(streamPtrPtr)
-    free()
-
-    err = lib.noise_stream_initialize(streamPtr)
-    if (err) return destroy('noise_stream_initialize', err)
   }
 
   var onhandshakewrite = function (ptr, buf) {
@@ -200,10 +247,18 @@ module.exports = exports = function (options) {
   var onhandshakeread = function (ptr) {
     if (ptr === streamPtr) {
       decrypt._readHandshake(function (buf) {
-        var bufPtr = writemem(buf)
-        var err = lib.noise_stream_handhshake_read(ptr, bufPtr, buf.length)
-        lib.free(bufPtr)
-        if (err) destroy('noise_stream_handhshake_read', err)
+        var bufPtr
+        var err
+
+        bufPtr = writemem(buf)
+
+        if (bufPtr) {
+          err = lib.noise_stream_handhshake_read(ptr, bufPtr, buf.length)
+          if (err) destroy('noise_stream_handhshake_read', err)
+          lib.free(bufPtr)
+        } else {
+          destroy('malloc')
+        }
       })
     }
   }
@@ -215,6 +270,8 @@ module.exports = exports = function (options) {
           decrypt._splitHandshake(ptr)
           encrypt._splitHandshake(ptr, macSize)
           split = true
+          decrypt.emit('handshake', localPrivateKey, localPublicKey, remotePublicKey)
+          encrypt.emit('handshake', localPrivateKey, localPublicKey, remotePublicKey)
         } else {
           decrypt.destroy(err)
           encrypt.destroy(err)
@@ -241,7 +298,7 @@ module.exports = exports = function (options) {
   }
 
   var destroy = function (s, code) {
-    var err = new Error(s + ' ' + code)
+    var err = createError(s, code)
     decrypt.destroy(err)
     encrypt.destroy(err)
   }

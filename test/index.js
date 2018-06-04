@@ -50,7 +50,7 @@ var buffer = function (done) {
 }
 
 test('simple protocol', function (t) {
-  t.plan(6)
+  t.plan(12)
 
   var onclientkeys = verifyPromise(true)
   var onserverkeys = verifyPromise(true)
@@ -75,6 +75,26 @@ test('simple protocol', function (t) {
 
     t.deepEquals(clientLocalPublicKey, serverRemotePublicKey, 'should be equal client keys')
     t.deepEquals(serverLocalPublicKey, clientRemotePublicKey, 'should be equal server keys')
+  })
+
+  clientEncrypt.on('handshake', function (lprk, lpuk, rpuk, cb) {
+    onclientkeys.then(function (keys) {
+      var [clientLocalPrivateKey, clientLocalPublicKey, clientRemotePublicKey] = keys
+
+      t.deepEquals(clientLocalPrivateKey, lprk)
+      t.deepEquals(clientLocalPublicKey, lpuk)
+      t.deepEquals(clientRemotePublicKey, rpuk)
+    })
+  })
+
+  clientDecrypt.on('handshake', function (lprk, lpuk, rpuk, cb) {
+    onclientkeys.then(function (keys) {
+      var [clientLocalPrivateKey, clientLocalPublicKey, clientRemotePublicKey] = keys
+
+      t.deepEquals(clientLocalPrivateKey, lprk)
+      t.deepEquals(clientLocalPublicKey, lpuk)
+      t.deepEquals(clientRemotePublicKey, rpuk)
+    })
   })
 
   serverDecrypt.on('data', function (data) {

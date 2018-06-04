@@ -1,6 +1,5 @@
 [
   "_malloc",
-  "_calloc",
   "_free",
 
   "_noise_stream_new",
