@@ -30,10 +30,10 @@ Constructor options:
 
 ```javascript
 {
-  initiator: true,                          // Protocol initiator or responder.
-  prologue: Buffer.from(prologue),          // Data that both parties want to confirm is identical.
-  privateKey: Buffer.from(privateKey),      // Static private key. Public key is computed from it.
-  verify: function () {}                    // Function to verify remote public key before any actual communication.
+  initiator: true,                       // Protocol initiator or responder.
+  prologue: Buffer.from(prologue),       // Data that both parties want to confirm is identical.
+  privateKey: Buffer.from(privateKey),   // Static private key. Public key is computed from it.
+  verify: function () {}                 // Verify remote public key before any actual communication.
 }
 ```
 
@@ -48,8 +48,9 @@ var TRUSTED_PUBLIC_KEY = Buffer.from('...')
 net.createServer(function (socket) {
   var server = noise({
     verify: function (localPrivateKey, localPublicKey, remotePublicKey, cb) {
-      // Calling cb with an error as first argument will also emit an error event on the stream pair
-      if (TRUSTED_PUBLIC_KEY.equals(remotePublicKey)) cb(null, true) // The callback must be called explicitly with true
+      // Calling cb with an error as first argument will also emit an error event on the stream pair.
+      // The callback must be called explicitly with true to accept.
+      if (TRUSTED_PUBLIC_KEY.equals(remotePublicKey)) cb(null, true)
       else cb(null, false)
     }
   })
