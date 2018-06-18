@@ -134,7 +134,7 @@ int noise_stream_decrypt(NoiseStreamState *state, uint8_t *data, size_t size, si
   noise_buffer_set_input(buf, data, size);
   err = noise_cipherstate_decrypt(state->decrypt_cipher, &buf);
   if (err != NOISE_ERROR_NONE) return err;
-  *out = buf.size;
+  if (out) *out = buf.size;
   return NOISE_ERROR_NONE;
 }
 
@@ -145,6 +145,6 @@ int noise_stream_encrypt(NoiseStreamState *state, uint8_t *data, size_t size, si
   noise_buffer_set_inout(buf, data, size, size + noise_cipherstate_get_mac_length(state->encrypt_cipher));
   err = noise_cipherstate_encrypt(state->encrypt_cipher, &buf);
   if (err != NOISE_ERROR_NONE) return err;
-  *out = buf.size;
+  if (out) *out = buf.size;
   return NOISE_ERROR_NONE;
 }

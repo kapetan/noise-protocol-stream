@@ -1,5 +1,7 @@
+/* eslint-disable no-labels */
+
 var util = require('util')
-var stream = require('stream')
+var through = require('through2')
 var lpStream = require('length-prefixed-stream')
 var Duplexify = require('duplexify')
 var each = require('stream-each')
@@ -8,6 +10,7 @@ var eos = require('end-of-stream')
 var noise = require('./noise-stream')
 
 var PTR_SIZE = 4
+var MESSAGE_SIZE = 65535
 
 var lib = noise()
 var heap = lib.heap
@@ -25,17 +28,24 @@ var dereference = function (ptr) {
   return buf.readUInt32LE(0)
 }
 
-var writemem = function (src, size) {
+var copymem = function (src, srcOffset, ptr, size) {
   if (!Buffer.isBuffer(src)) src = Buffer.from(src)
-  if (!size) size = src.length
-  var ptr = lib.malloc(size)
+  src = src.slice(srcOffset, srcOffset + size)
+  heap.set(src, ptr)
+}
+
+var writemem = function (src) {
+  if (!Buffer.isBuffer(src)) src = Buffer.from(src)
+  var ptr = lib.malloc(src.length)
   if (ptr) heap.set(src, ptr)
   return ptr
 }
 
-var readmem = function (ptr, size) {
+var readmem = function (ptr, size, dest, destOffset) {
   var buf = heap.slice(ptr, ptr + size)
-  return Buffer.from(buf)
+  if (!dest) dest = Buffer.from(buf)
+  else dest.set(buf, destOffset || 0)
+  return dest
 }
 
 var DecryptStream = function (options) {
@@ -43,7 +53,7 @@ var DecryptStream = function (options) {
 
   var self = this
   var decode = lpStream.decode()
-  var pass = new stream.PassThrough()
+  var pass = through()
 
   decode.on('end', function () {
     pass.end()
@@ -69,6 +79,7 @@ var DecryptStream = function (options) {
   this._inputCb = null
   this._handshakeCb = null
   this._streamPtr = null
+  this._macSize = 0
 
   this.setWritable(decode)
   this.setReadable(pass)
@@ -86,8 +97,9 @@ DecryptStream.prototype._readHandshake = function (cb) {
   else this._handshakeCb = cb
 }
 
-DecryptStream.prototype._splitHandshake = function (ptr) {
+DecryptStream.prototype._splitHandshake = function (ptr, macSize) {
   this._streamPtr = ptr
+  this._macSize = macSize
   if (this._inputData) this._drainInput(this._writeOutput.bind(this))
 }
 
@@ -99,28 +111,37 @@ DecryptStream.prototype._drainInput = function (cb) {
 }
 
 DecryptStream.prototype._writeOutput = function (data, cb) {
+  var n
   var dataPtr
-  var sizePtr
+  var buffer
+  var dataOffset
+  var dataSize
   var err
 
+  n = Math.ceil(data.length / MESSAGE_SIZE)
   dataPtr = writemem(data)
 
   if (dataPtr) {
-    sizePtr = pointer()
+    buffer = Buffer.alloc(data.length - n * this._macSize)
 
-    if (sizePtr) {
-      err = lib.noise_stream_decrypt(this._streamPtr, dataPtr, data.length, sizePtr)
+    error: {
+      for (var i = 0; i < n; i++) {
+        dataOffset = dataPtr + i * MESSAGE_SIZE
+        dataSize = i === (n - 1)
+          ? (data.length - (n - 1) * MESSAGE_SIZE)
+          : MESSAGE_SIZE
 
-      if (!err) {
-        var size = dereference(sizePtr)
-        this._output.write(readmem(dataPtr, size), cb)
-      } else {
-        cb(createError('noise_stream_decrypt', err))
+        err = lib.noise_stream_decrypt(this._streamPtr, dataOffset, dataSize, 0)
+
+        if (!err) {
+          readmem(dataOffset, dataSize - this._macSize, buffer, i * (MESSAGE_SIZE - this._macSize))
+        } else {
+          cb(createError('noise_stream_decrypt', err))
+          break error
+        }
       }
 
-      lib.free(sizePtr)
-    } else {
-      cb(createError('malloc'))
+      this._output.write(buffer, cb)
     }
 
     lib.free(dataPtr)
@@ -132,7 +153,7 @@ DecryptStream.prototype._writeOutput = function (data, cb) {
 var EncryptStream = function (options) {
   Duplexify.call(this)
 
-  var pass = new stream.PassThrough()
+  var pass = through()
   var encode = lpStream.encode()
 
   pass.on('end', function () {
@@ -154,29 +175,38 @@ EncryptStream.prototype._writeHandshake = function (data) {
 
 EncryptStream.prototype._splitHandshake = function (ptr, macSize) {
   var self = this
+
   each(this._input, function (data, next) {
+    var n
+    var totalSize
     var dataPtr
-    var sizePtr
+    var dataOffset
+    var dataSize
     var err
 
-    dataPtr = writemem(data, data.length + macSize)
+    n = Math.ceil(data.length / (MESSAGE_SIZE - macSize))
+    totalSize = data.length + n * macSize
+    dataPtr = lib.malloc(totalSize)
 
     if (dataPtr) {
-      sizePtr = pointer()
+      error: {
+        for (var i = 0; i < n; i++) {
+          dataOffset = dataPtr + i * MESSAGE_SIZE
+          dataSize = i === (n - 1)
+            ? (data.length - (n - 1) * (MESSAGE_SIZE - macSize))
+            : (MESSAGE_SIZE - macSize)
 
-      if (sizePtr) {
-        err = lib.noise_stream_encrypt(ptr, dataPtr, data.length, sizePtr)
+          copymem(data, i * (MESSAGE_SIZE - macSize), dataOffset, dataSize)
 
-        if (!err) {
-          var size = dereference(sizePtr)
-          self._output.write(readmem(dataPtr, size), next)
-        } else {
-          next(createError('noise_stream_encrypt', err))
+          err = lib.noise_stream_encrypt(ptr, dataOffset, dataSize, 0)
+
+          if (err) {
+            next(createError('noise_stream_encrypt', err))
+            break error
+          }
         }
 
-        lib.free(sizePtr)
-      } else {
-        next(createError('malloc'))
+        self._output.write(readmem(dataPtr, totalSize), next)
       }
 
       lib.free(dataPtr)
@@ -267,7 +297,7 @@ module.exports = exports = function (options) {
     if (ptr === streamPtr) {
       var onverify = function (err, accept) {
         if (!err && accept === true) {
-          decrypt._splitHandshake(ptr)
+          decrypt._splitHandshake(ptr, macSize)
           encrypt._splitHandshake(ptr, macSize)
           split = true
           decrypt.emit('handshake', localPrivateKey, localPublicKey, remotePublicKey)

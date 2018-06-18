@@ -263,3 +263,23 @@ test('buffered decrypt', function (t) {
   clientEncrypt.end()
   serverEncrypt.end()
 })
+
+test('big data', function (t) {
+  t.plan(1)
+
+  var { clientDecrypt, clientEncrypt } = createClient()
+  var { serverDecrypt, serverEncrypt } = createServer()
+  var message = Buffer.alloc(65535).fill('test-data')
+
+  clientEncrypt.pipe(serverDecrypt)
+  serverEncrypt.pipe(clientDecrypt)
+
+  serverDecrypt.on('data', function (data) {
+    t.deepEquals(data, message)
+  })
+
+  clientEncrypt.write(message)
+
+  clientEncrypt.end()
+  serverEncrypt.end()
+})

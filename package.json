@@ -29,7 +29,8 @@
     "duplexify": "^3.6.0",
     "end-of-stream": "^1.4.1",
     "length-prefixed-stream": "^1.5.2",
-    "stream-each": "^1.2.2"
+    "stream-each": "^1.2.2",
+    "through2": "^2.0.3"
   },
   "devDependencies": {
     "browserify": "^16.2.2",

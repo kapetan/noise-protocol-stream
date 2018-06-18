@@ -2,7 +2,7 @@
 
 set -e
 
-DEBUG=""
+DEBUG=false
 DIRNAME="$(cd "$(dirname "$BASH_SOURCE")"/..; pwd)"
 NOISE="$DIRNAME"/noise-c
 BUILD="$DIRNAME"/build
