@@ -20,7 +20,9 @@ static int noise_stream_process_action(NoiseStreamState *state) {
   size_t local_private_key_size;
   size_t local_public_key_size;
   size_t remote_public_key_size;
-  int action = noise_handshakestate_get_action(state->handshake);
+  int action;
+
+  action = noise_handshakestate_get_action(state->handshake);
 
   switch (action) {
     case NOISE_ACTION_WRITE_MESSAGE:
@@ -76,16 +78,22 @@ int noise_stream_new(
   NoiseHandshakeState *handshake;
   NoiseDHState *dh;
 
+  err = NOISE_ERROR_NONE;
+  handshake = NULL;
+
   *state = (NoiseStreamState *) malloc(sizeof(NoiseStreamState));
-  if (!(*state)) return NOISE_ERROR_NO_MEMORY;
+  if (!(*state)) {
+    err = NOISE_ERROR_NO_MEMORY;
+    goto error;
+  }
 
   err = noise_handshakestate_new_by_name(&handshake, "Noise_XX_25519_AESGCM_SHA256",
     initiator ? NOISE_ROLE_INITIATOR : NOISE_ROLE_RESPONDER);
-  if (err != NOISE_ERROR_NONE) return err;
+  if (err != NOISE_ERROR_NONE) goto error;
 
   if (prologue) {
     err = noise_handshakestate_set_prologue(handshake, prologue, prologue_size);
-    if (err != NOISE_ERROR_NONE) return err;
+    if (err != NOISE_ERROR_NONE) goto error;
   }
 
   dh = noise_handshakestate_get_local_keypair_dh(handshake);
@@ -93,16 +101,22 @@ int noise_stream_new(
   if (private_key) err = noise_dhstate_set_keypair_private(dh, private_key, private_key_size);
   else err = noise_dhstate_generate_keypair(dh);
 
-  if (err != NOISE_ERROR_NONE) return err;
+  if (err != NOISE_ERROR_NONE) goto error;
 
   err = noise_handshakestate_start(handshake);
-  if (err != NOISE_ERROR_NONE) return err;
+  if (err != NOISE_ERROR_NONE) goto error;
 
   (*state)->handshake = handshake;
   (*state)->encrypt_cipher = NULL;
   (*state)->decrypt_cipher = NULL;
 
-  return NOISE_ERROR_NONE;
+  goto out;
+
+  error:
+  if (handshake) noise_handshakestate_free(handshake);
+
+  out:
+  return err;
 }
 
 int noise_stream_initialize(NoiseStreamState *state) {
