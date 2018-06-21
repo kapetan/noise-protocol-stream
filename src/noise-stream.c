@@ -113,6 +113,7 @@ int noise_stream_new(
   goto out;
 
   error:
+  if (*state) free(*state);
   if (handshake) noise_handshakestate_free(handshake);
 
   out:

@@ -112,7 +112,7 @@ test('simple protocol', function (t) {
   serverEncrypt.end()
 })
 
-test('protocol with prologue', function (t) {
+test('prologue', function (t) {
   t.plan(1)
 
   var { clientDecrypt, clientEncrypt } = createClient({ prologue: 'test-prologue' })
@@ -131,7 +131,7 @@ test('protocol with prologue', function (t) {
   serverEncrypt.end()
 })
 
-test('protocol with different prologue', function (t) {
+test('mismatching prologue', function (t) {
   t.plan(2)
 
   var { clientDecrypt, clientEncrypt } = createClient({ prologue: 'test-prologue-1' })
@@ -151,7 +151,7 @@ test('protocol with different prologue', function (t) {
   serverEncrypt.end()
 })
 
-test('protocol with private key', function (t) {
+test('private key', function (t) {
   t.plan(5)
 
   var onclientkeys = verifyPromise(true)
@@ -182,7 +182,20 @@ test('protocol with private key', function (t) {
   serverEncrypt.end()
 })
 
-test('protocol with verify reject', function (t) {
+test('invalid private key', function (t) {
+  t.plan(2)
+
+  var { clientDecrypt, clientEncrypt } = createClient({ privateKey: Buffer.from('test') })
+
+  var onerror = function (err) {
+    t.equals(err.message, 'noise_stream_new 17674')
+  }
+
+  clientEncrypt.on('error', onerror)
+  clientDecrypt.on('error', onerror)
+})
+
+test('verify reject', function (t) {
   t.plan(1)
 
   var { clientDecrypt, clientEncrypt } = createClient({
@@ -207,7 +220,7 @@ test('protocol with verify reject', function (t) {
   serverEncrypt.end()
 })
 
-test('protocol with verify error', function (t) {
+test('verify error', function (t) {
   t.plan(3)
 
   var { clientDecrypt, clientEncrypt } = createClient({
