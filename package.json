@@ -1,6 +1,6 @@
 {
   "name": "noise-protocol-stream",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Node stream wrapper for Noise Protocol C implementation compiled to WebAssembly",
   "main": "index.js",
   "scripts": {
