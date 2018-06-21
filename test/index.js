@@ -1,5 +1,6 @@
-var stream = require('stream')
 var test = require('tape')
+var through = require('through2')
+
 var noise = require('../')
 
 var TEST_PRIVATE_KEY = Buffer.from('90000e3a66c18b14888be31ab38573551466193e4805540e65f3916356185866', 'hex')
@@ -37,16 +38,15 @@ var createServer = function (options) {
 var buffer = function (done) {
   var buffer = []
 
-  return new stream.Transform({
-    transform: function (data, enc, cb) {
+  return through(
+    function (data, enc, cb) {
       buffer.push(data)
       cb(null, data)
     },
-    flush: function (cb) {
+    function (cb) {
       done(Buffer.concat(buffer))
       cb()
-    }
-  })
+    })
 }
 
 test('simple protocol', function (t) {
@@ -282,4 +282,55 @@ test('big data', function (t) {
 
   clientEncrypt.end()
   serverEncrypt.end()
+})
+
+test('corrupted handshake message', function (t) {
+  t.plan(2)
+
+  var { clientDecrypt, clientEncrypt } = createClient()
+  var { serverDecrypt, serverEncrypt } = createServer()
+  var proxy = through(function (data, enc, cb) {
+    if (data.length > 1) data[data.length - 1] = 0
+    cb(null, data)
+  })
+
+  var onerror = function (err) {
+    t.equals(err.message, 'noise_stream_handhshake_read 17668')
+  }
+
+  clientEncrypt.pipe(proxy).pipe(serverDecrypt)
+  serverEncrypt.pipe(clientDecrypt)
+
+  clientEncrypt.on('error', onerror)
+  clientDecrypt.on('error', onerror)
+
+  clientEncrypt.end()
+  serverEncrypt.end()
+})
+
+test('corrupted decrypt message', function (t) {
+  t.plan(1)
+
+  var { clientDecrypt, clientEncrypt } = createClient()
+  var { serverDecrypt, serverEncrypt } = createServer()
+  var corrupt = false
+  var message = Buffer.from('test-client-message')
+  var proxy = through(function (data, enc, cb) {
+    if (corrupt && data.length >= message.length) data[data.length - 1] = 0
+    cb(null, data)
+  })
+
+  clientEncrypt.pipe(proxy).pipe(serverDecrypt)
+  serverEncrypt.pipe(clientDecrypt)
+
+  serverDecrypt.on('error', function (err) {
+    t.equals(err.message, 'noise_stream_decrypt 17668')
+  })
+
+  clientEncrypt.on('handshake', function () {
+    corrupt = true
+    clientEncrypt.write(message)
+    clientEncrypt.end()
+    serverEncrypt.end()
+  })
 })
