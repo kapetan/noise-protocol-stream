@@ -60,6 +60,7 @@ var DecryptStream = function (options) {
   })
 
   each(decode, function (data, next) {
+    if (self.destroyed) return
     if (self._streamPtr) {
       self._writeOutput(data, next)
     } else if (self._handshakeCb) {
@@ -177,6 +178,8 @@ EncryptStream.prototype._splitHandshake = function (ptr, macSize) {
   var self = this
 
   each(this._input, function (data, next) {
+    if (self.destroyed) return
+
     var n
     var totalSize
     var dataPtr
